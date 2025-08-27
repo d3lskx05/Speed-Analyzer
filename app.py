@@ -391,13 +391,14 @@ if run_btn:
 st.markdown("---")
 st.subheader("⚖️ A/B тестирование моделей")
 
+# ---------- выбор моделей ----------
 colA, colB = st.columns(2)
 
 with colA:
     source_a = st.radio("Источник модели A:", ["HF", "GDrive"], key="sourceA")
     if source_a == "HF":
         modelA = st.text_input("Модель A (HF ID):", "deepvk/USER-bge-m3", key="modelA")
-        hf_tokenA = st.text_input("HF Token для модели A (если приватная):", type="password", key="hfA")
+        hf_tokenA = st.text_input("HF Token модели A (если приватная):", type="password", key="hfA")
     else:
         modelA_file_id = st.text_input("Google Drive File ID модели A:", "1RR15OMLj9vfSrVa1HN-dRU-4LbkdbRRf", key="gdriveA")
 
@@ -405,12 +406,12 @@ with colB:
     source_b = st.radio("Источник модели B:", ["HF", "GDrive"], key="sourceB")
     if source_b == "HF":
         modelB = st.text_input("Модель B (HF ID):", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", key="modelB")
-        hf_tokenB = st.text_input("HF Token для модели B (если приватная):", type="password", key="hfB")
+        hf_tokenB = st.text_input("HF Token модели B (если приватная):", type="password", key="hfB")
     else:
         modelB_file_id = st.text_input("Google Drive File ID модели B:", "1RR15OMLj9vfSrVa1HN-dRU-4LbkdbRRf", key="gdriveB")
 
-n_queries_ab = st.number_input("Количество тестовых запросов для A/B:", min_value=1, max_value=500, value=10, key="n_queries_ab")
-text_len_ab = st.selectbox("Длина текста для A/B:", ["short", "medium", "long"], key="text_len_ab")
+n_queries_ab = st.number_input("Количество тестовых запросов:", min_value=1, max_value=500, value=10, key="n_queries_ab")
+text_len_ab = st.selectbox("Длина текста:", ["short", "medium", "long"], key="text_len_ab")
 
 # ---------- функции ----------
 def download_gdrive_model(file_id, dest_folder):
@@ -433,7 +434,7 @@ def normalize_result(res):
         return {k: None for k in keys}
     return {k: res.get(k, None) for k in keys}
 
-# ---------- запуск ----------
+# ---------- запуск A/B ----------
 if st.button("Запустить A/B тест"):
     with st.spinner("Выполняем A/B тест..."):
         # --- модель A ---
@@ -456,39 +457,46 @@ if st.button("Запустить A/B тест"):
         except Exception as e:
             resB = {"error": str(e)}
 
-    # --- сохраняем в сессию ---
+    # --- сохраняем результаты в сессию ---
     st.session_state["AB_test"] = {"A": resA, "B": resB}
 
-# ---------- вывод ----------
+# ---------- вывод результатов ----------
 if st.session_state.get("AB_test"):
-    resA_norm = normalize_result(st.session_state["AB_test"]["A"])
-    resB_norm = normalize_result(st.session_state["AB_test"]["B"])
-    
-    df_ab = pd.DataFrame([resA_norm, resB_norm])
-    df_ab.index = ["A","B"]
-    st.markdown("### Результаты A/B теста")
-    st.dataframe(df_ab)
+    resA = st.session_state["AB_test"].get("A")
+    resB = st.session_state["AB_test"].get("B")
 
-    st.markdown("### Сравнение ключевых метрик")
-    metrics = list(resA_norm.keys())
-    diff = {}
-    for m in metrics:
-        a_val = resA_norm.get(m)
-        b_val = resB_norm.get(m)
-        diff[m] = {"A": a_val, "B": b_val, "diff (B-A)": (b_val - a_val) if a_val is not None and b_val is not None else None}
-    st.dataframe(pd.DataFrame(diff).T)
+    # проверка корректности
+    if not isinstance(resA, dict) or not isinstance(resB, dict):
+        st.warning("Результаты A/B теста ещё не получены или содержат ошибки.")
+    else:
+        resA_norm = normalize_result(resA)
+        resB_norm = normalize_result(resB)
 
-    # Визуализация
-    try:
-        plot_df = pd.DataFrame([
-            {"model":"A", **resA_norm},
-            {"model":"B", **resB_norm}
-        ])
-        fig = px.bar(plot_df, x="model", y=["load_time_sec","time_batch_sec","ram_after_load_mb"],
-                     barmode="group", title="Сравнение метрик моделей A vs B")
-        st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.write("Ошибка визуализации A/B:", e)
+        df_ab = pd.DataFrame([resA_norm, resB_norm])
+        df_ab.index = ["A", "B"]
+        st.markdown("### Результаты A/B теста")
+        st.dataframe(df_ab)
+
+        st.markdown("### Сравнение ключевых метрик")
+        metrics = list(resA_norm.keys())
+        diff = {}
+        for m in metrics:
+            a_val = resA_norm.get(m)
+            b_val = resB_norm.get(m)
+            diff[m] = {"A": a_val, "B": b_val, "diff (B-A)": (b_val - a_val) if a_val is not None and b_val is not None else None}
+        st.dataframe(pd.DataFrame(diff).T)
+
+        # визуализация
+        try:
+            plot_df = pd.DataFrame([
+                {"model":"A", **resA_norm},
+                {"model":"B", **resB_norm}
+            ])
+            fig = px.bar(plot_df, x="model", y=["load_time_sec","time_batch_sec","ram_after_load_mb"],
+                         barmode="group", title="Сравнение метрик моделей A vs B")
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.write("Ошибка визуализации A/B:", e)
 
 # display accumulated results
 if st.session_state.get("bench_results"):
