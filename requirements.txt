@@ -6,9 +6,3 @@ torch
 transformers
 gdown
 pandas
-SimpleDocTemplate
-Paragraph
-Spacer
-Table
-TableStyle
-Image
