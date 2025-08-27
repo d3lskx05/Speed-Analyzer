@@ -340,7 +340,7 @@ with col1:
     source=st.radio("Источник модели:", ["HuggingFace","GDrive"])
     if source=="HuggingFace":
         model_input=st.text_input("HF model id:", value="deepvk/USER-bge-m3")
-        use_token=st.checkbox("Приватный HF #(use token from st.secrets['HUGGINGFACE_TOKEN']#)", value=False)
+        use_token=st.checkbox("Приватный HF", value=False)
         hf_token=st.secrets.get("HUGGINGFACE_TOKEN") if use_token else None
     else:
         model_input=st.text_input("GDrive File ID модели:", value="1bZoykt0Sj2GRPvLRC_3Z7Wt8g4AGT34R")
