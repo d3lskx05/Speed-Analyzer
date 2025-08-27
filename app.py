@@ -10,6 +10,7 @@ import math
 import gdown
 import zipfile
 import plotly.express as px
+import pandas as pd
 
 from sentence_transformers import SentenceTransformer
 import torch
