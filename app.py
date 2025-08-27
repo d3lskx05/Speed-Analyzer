@@ -423,12 +423,15 @@ def download_gdrive_model(file_id, dest_folder):
     return dest_folder
 
 def normalize_result(res):
-    """Приводим результат benchmark_model к плоскому словарю для DataFrame"""
-    flat_keys = ["load_time_sec","ram_after_load_mb","time_single_ms","time_batch_sec",
-                 "avg_per_query_ms","model_size_mb","embedding_dim","num_parameters"]
-    if "error" in res:
-        return {k: None for k in flat_keys}
-    return {k: res.get(k) for k in flat_keys}
+    """
+    Приводим результат benchmark_model к плоскому словарю для DataFrame.
+    Любые отсутствующие ключи заполняем None.
+    """
+    keys = ["load_time_sec","ram_after_load_mb","time_single_ms","time_batch_sec",
+            "avg_per_query_ms","model_size_mb","embedding_dim","num_parameters"]
+    if not res or "error" in res:
+        return {k: None for k in keys}
+    return {k: res.get(k, None) for k in keys}
 
 # ---------- запуск ----------
 if st.button("Запустить A/B тест"):
@@ -458,11 +461,12 @@ if st.button("Запустить A/B тест"):
 
 # ---------- вывод ----------
 if st.session_state.get("AB_test"):
-    st.markdown("### Результаты A/B теста")
     resA_norm = normalize_result(st.session_state["AB_test"]["A"])
     resB_norm = normalize_result(st.session_state["AB_test"]["B"])
     
-    df_ab = pd.DataFrame([resA_norm, resB_norm], index=["A","B"])
+    df_ab = pd.DataFrame([resA_norm, resB_norm])
+    df_ab.index = ["A","B"]
+    st.markdown("### Результаты A/B теста")
     st.dataframe(df_ab)
 
     st.markdown("### Сравнение ключевых метрик")
