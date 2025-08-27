@@ -12,6 +12,7 @@ import pandas as pd
 import plotly.express as px
 from sentence_transformers import SentenceTransformer
 import torch
+import gc
 
 # Словарь с русскими названиями колонок
 COLUMN_NAMES_RU = {
