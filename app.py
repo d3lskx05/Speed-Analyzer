@@ -37,6 +37,13 @@ COLUMN_NAMES_RU = {
     "cpu_percent_sample": "CPU (%)",
     "timestamp": "Время теста"
 }
+
+# ---------- Helper: seed ----------
+def set_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    
 # ---------- Helper utilities ----------
 
 def sizeof_fmt(num, suffix="B"):
@@ -151,28 +158,34 @@ def inspect_model_info(model):
         info["model_cache_folder"] = None
     return info
 
-# ---------- Benchmarking ----------
-
-def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="short", hf_token=None):
+# ---------- Benchmarking (обновлённая версия) ----------
+def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="short", hf_token=None, n_repeats=3):
+    set_seed(42)
+    
     m = {}
     m["model_id_or_path"] = model_name_or_path
     m["source"] = source
     hf_meta = None
     if source == "HF":
         hf_meta = hf_model_info(model_name_or_path, token=hf_token)
-    t0 = time.time()
+
+    t0 = time.perf_counter()
     try:
         model = load_model_cached(model_name_or_path, from_hf=(source=="HF"), hf_token=hf_token)
-        load_time = time.time() - t0
+        load_time = time.perf_counter() - t0
         m["load_time_sec"] = round(load_time, 3)
     except Exception as e:
         m["error"] = f"Ошибка загрузки модели: {e}"
         return m
+
+    model.eval()  # отключаем случайные элементы
+
     try:
         m["ram_after_load_mb"] = round(get_ram_usage_mb(), 2)
     except Exception:
         m["ram_after_load_mb"] = None
 
+    # размер модели
     try:
         size_mb = None
         if source != "HF" and os.path.isdir(model_name_or_path):
@@ -195,6 +208,7 @@ def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="
     except Exception:
         m["model_size_mb"] = None
 
+    # инспекция модели
     try:
         info = inspect_model_info(model)
         m.update({
@@ -208,6 +222,7 @@ def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="
     except Exception:
         pass
 
+    # HF метаданные
     if hf_meta:
         try:
             m["hf_author"] = hf_meta.get("author")
@@ -219,6 +234,7 @@ def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="
         except Exception:
             pass
 
+    # выбор текста
     if text_length=="short":
         sample_text="Привет мир"
     elif text_length=="medium":
@@ -226,36 +242,53 @@ def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="
     else:
         sample_text=" ".join(["Длинный"]*200)
 
-    try:
-        _ = model.encode("тёст", convert_to_tensor=True)
-    except Exception:
-        pass
-    try:
-        t1 = time.time()
-        _ = model.encode(sample_text, convert_to_tensor=True)
-        t_single = time.time() - t1
-        m["time_single_ms"] = round(t_single*1000,3)
-    except Exception:
+    # прогрев
+    for _ in range(3):
+        try:
+            _ = model.encode(sample_text, convert_to_tensor=True)
+        except Exception:
+            pass
+
+    # время одиночного запроса
+    single_times = []
+    for _ in range(n_repeats):
+        try:
+            t1 = time.perf_counter()
+            _ = model.encode(sample_text, convert_to_tensor=True)
+            single_times.append(time.perf_counter() - t1)
+        except Exception:
+            pass
+    if single_times:
+        m["time_single_ms"] = round(np.mean(single_times)*1000,3)
+    else:
         m["time_single_ms"] = None
 
-    try:
-        texts=[sample_text]*max(1,int(n_queries))
-        t2=time.time()
-        _=model.encode(texts, convert_to_tensor=True)
-        t_batch=time.time()-t2
-        m["time_batch_sec"]=round(t_batch,3)
-        m["avg_per_query_ms"]=round((t_batch/len(texts))*1000,3)
-    except Exception:
-        m["time_batch_sec"]=None
-        m["avg_per_query_ms"]=None
+    # время батча
+    texts = [sample_text]*max(1,int(n_queries))
+    batch_times = []
+    for _ in range(n_repeats):
+        try:
+            t2 = time.perf_counter()
+            _ = model.encode(texts, convert_to_tensor=True)
+            batch_times.append(time.perf_counter() - t2)
+        except Exception:
+            pass
+    if batch_times:
+        avg_batch = np.mean(batch_times)
+        m["time_batch_sec"] = round(avg_batch,3)
+        m["avg_per_query_ms"] = round((avg_batch/len(texts))*1000,3)
+    else:
+        m["time_batch_sec"] = None
+        m["avg_per_query_ms"] = None
 
+    # CPU нагрузка
     try:
-        cpu_before=psutil.cpu_percent(interval=None)
+        cpu_before = psutil.cpu_percent(interval=None)
         _ = model.encode([sample_text]*5, convert_to_tensor=True)
-        cpu_after=psutil.cpu_percent(interval=None)
-        m["cpu_percent_sample"]=round((cpu_before+cpu_after)/2,2)
+        cpu_after = psutil.cpu_percent(interval=None)
+        m["cpu_percent_sample"] = round((cpu_before+cpu_after)/2,2)
     except Exception:
-        m["cpu_percent_sample"]=None
+        m["cpu_percent_sample"] = None
 
     return m
 
