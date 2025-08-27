@@ -166,14 +166,15 @@ def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="
     random.seed(42)
     np.random.seed(42)
     torch.manual_seed(42)
-    
+
     m = {}
     m["model_id_or_path"] = model_name_or_path
     m["source"] = source
-    hf_meta = None
-    if source == "HF":
-        hf_meta = hf_model_info(model_name_or_path, token=hf_token)
 
+    # HF метаданные
+    hf_meta = hf_model_info(model_name_or_path, token=hf_token) if source=="HF" else None
+
+    # Загрузка модели
     t0 = time.perf_counter()
     try:
         model = load_model_cached(model_name_or_path, from_hf=(source=="HF"), hf_token=hf_token)
@@ -183,14 +184,59 @@ def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="
         m["error"] = f"Ошибка загрузки модели: {e}"
         return m
 
-    model.eval()  # отключаем dropout и случайные элементы
+    model.eval()  # отключаем dropout
 
+    # RAM после загрузки
     try:
         m["ram_after_load_mb"] = round(get_ram_usage_mb(), 2)
     except Exception:
         m["ram_after_load_mb"] = None
 
-    # выбор текста
+    # Размер модели
+    try:
+        size_mb = None
+        if source != "HF" and os.path.isdir(model_name_or_path):
+            size_mb = path_size_bytes(model_name_or_path) / (1024*1024)
+        else:
+            cache_folder = getattr(model, "cache_folder", None)
+            if cache_folder:
+                sub = model_name_or_path.replace("/", "_")
+                candidate = os.path.join(cache_folder, sub)
+                size_mb = path_size_bytes(candidate)/ (1024*1024) if os.path.isdir(candidate) else path_size_bytes(cache_folder)/(1024*1024)
+        if size_mb is None and source=="HF":
+            files = hf_model_files(model_name_or_path, token=hf_token)
+            if isinstance(files, list):
+                total = sum([f.get("size",0) if isinstance(f, dict) else 0 for f in files])
+                size_mb = total/(1024*1024) if total>0 else None
+        m["model_size_mb"] = round(size_mb,2) if size_mb else None
+    except Exception:
+        m["model_size_mb"] = None
+
+    # Инспекция модели
+    try:
+        info = inspect_model_info(model)
+        m.update({
+            "embedding_dim": info.get("dim"),
+            "num_parameters": int(info.get("params")) if info.get("params") else None,
+            "num_layers": info.get("num_layers"),
+            "batch_optimized": info.get("batch_optimized"),
+            "quantization_bitsandbytes_available": info.get("quantization_bitsandbytes_available"),
+            "fp16_cuda_available": info.get("fp16_cuda_available")
+        })
+    except Exception:
+        pass
+
+    # HF метаданные
+    if hf_meta:
+        try:
+            m["hf_author"] = hf_meta.get("author")
+            m["hf_lastModified"] = hf_meta.get("lastModified")
+            m["hf_tags"] = ", ".join(hf_meta.get("tags") or [])
+            m["hf_languages"] = ", ".join(hf_meta.get("languages") or [])
+        except Exception:
+            pass
+
+    # Текст для кодирования
     if text_length=="short":
         sample_text="Привет мир"
     elif text_length=="medium":
@@ -198,13 +244,13 @@ def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="
     else:
         sample_text=" ".join(["Длинный"]*200)
 
-    # прогрев (1 раз)
+    # Прогрев (1 раз)
     try:
         _ = model.encode(sample_text, convert_to_tensor=True)
     except Exception:
         pass
 
-    # время одиночного запроса
+    # Время одиночного запроса
     single_times = []
     for _ in range(n_repeats):
         try:
@@ -213,12 +259,9 @@ def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="
             single_times.append(time.perf_counter() - t1)
         except Exception:
             pass
-    if single_times:
-        m["time_single_ms"] = round(np.mean(single_times)*1000,3)
-    else:
-        m["time_single_ms"] = None
+    m["time_single_ms"] = round(np.mean(single_times)*1000,3) if single_times else None
 
-    # время батча
+    # Время батча
     texts = [sample_text]*max(1,int(n_queries))
     batch_times = []
     for _ in range(n_repeats):
@@ -244,6 +287,9 @@ def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="
         m["cpu_percent_sample"] = round((cpu_before+cpu_after)/2,2)
     except Exception:
         m["cpu_percent_sample"] = None
+
+    # Время теста
+    m["timestamp"] = time.strftime("%Y-%m-%d %H:%M:%S")
 
     return m
 # ---------- Optimization tips ----------
