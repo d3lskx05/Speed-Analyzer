@@ -6,3 +6,4 @@ torch
 transformers
 gdown
 pandas
+reportlab
