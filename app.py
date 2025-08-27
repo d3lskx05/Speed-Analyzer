@@ -390,33 +390,64 @@ st.markdown("---")
 st.subheader("⚖️ A/B тестирование моделей")
 
 colA, colB = st.columns(2)
+
 with colA:
-    source_a = st.radio("Источник модели A:", ["HuggingFace", "Local"], key="sourceA")
-    if source_a == "HuggingFace":
-        modelA = st.text_input("Модель A (HF id):", "deepvk/USER-bge-m3", key="modelA")
+    source_a = st.radio("Источник модели A:", ["HF", "GDrive"], key="sourceA")
+    if source_a == "HF":
+        modelA = st.text_input("Модель A (HF ID):", "deepvk/USER-bge-m3", key="modelA")
+        hf_tokenA = st.text_input("HF Token для модели A (если приватная):", type="password", key="hfA")
     else:
-        modelA = st.text_input("Модель A (путь локальный):", "/content/drive/MyDrive/models/modelA", key="modelA_local")
+        modelA_file_id = st.text_input("Google Drive File ID модели A:", "1RR15OMLj9vfSrVa1HN-dRU-4LbkdbRRf", key="gdriveA")
 
 with colB:
-    source_b = st.radio("Источник модели B:", ["HuggingFace", "Local"], key="sourceB")
-    if source_b == "HuggingFace":
-        modelB = st.text_input("Модель B (HF id):", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", key="modelB")
+    source_b = st.radio("Источник модели B:", ["HF", "GDrive"], key="sourceB")
+    if source_b == "HF":
+        modelB = st.text_input("Модель B (HF ID):", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", key="modelB")
+        hf_tokenB = st.text_input("HF Token для модели B (если приватная):", type="password", key="hfB")
     else:
-        modelB = st.text_input("Модель B (путь локальный):", "/content/drive/MyDrive/models/modelB", key="modelB_local")
+        modelB_file_id = st.text_input("Google Drive File ID модели B:", "1RR15OMLj9vfSrVa1HN-dRU-4LbkdbRRf", key="gdriveB")
 
 n_queries_ab = st.number_input("Количество тестовых запросов для A/B:", min_value=1, max_value=500, value=10, key="n_queries_ab")
 text_len_ab = st.selectbox("Длина текста для A/B:", ["short", "medium", "long"], key="text_len_ab")
 
+def download_gdrive_model(file_id, dest_folder):
+    os.makedirs(dest_folder, exist_ok=True)
+    zip_path = os.path.join(dest_folder, "model.zip")
+    url = f"https://drive.google.com/uc?id={file_id}"
+    gdown.download(url, output=zip_path, quiet=False)
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        zip_ref.extractall(dest_folder)
+    return dest_folder
+
 if st.button("Запустить A/B тест"):
-    with st.spinner("Запускаем A/B тест..."):
-        resA = benchmark_model(modelA, source=("HF" if source_a=="HuggingFace" else "Local"),
-                               n_queries=n_queries_ab, text_length=text_len_ab)
-        resB = benchmark_model(modelB, source=("HF" if source_b=="HuggingFace" else "Local"),
-                               n_queries=n_queries_ab, text_length=text_len_ab)
+    with st.spinner("Выполняем A/B тест..."):
+        # --- модель A ---
+        try:
+            if source_a == "GDrive":
+                modelA_path = download_gdrive_model(modelA_file_id, "/tmp/modelA")
+                resA = benchmark_model(modelA_path, source="Local", n_queries=n_queries_ab, text_length=text_len_ab)
+            else:
+                resA = benchmark_model(modelA, source="HF", n_queries=n_queries_ab, text_length=text_len_ab, hf_token=hf_tokenA)
+        except Exception as e:
+            resA = {"error": str(e)}
 
-    # сохраняем в сессию отдельно
-    st.session_state["AB_test"] = {"A": resA, "B": resB}
+        # --- модель B ---
+        try:
+            if source_b == "GDrive":
+                modelB_path = download_gdrive_model(modelB_file_id, "/tmp/modelB")
+                resB = benchmark_model(modelB_path, source="Local", n_queries=n_queries_ab, text_length=text_len_ab)
+            else:
+                resB = benchmark_model(modelB, source="HF", n_queries=n_queries_ab, text_length=text_len_ab, hf_token=hf_tokenB)
+        except Exception as e:
+            resB = {"error": str(e)}
 
+    # --- проверка ошибок ---
+    if "error" in resA or "error" in resB:
+        st.error(f"Ошибка при загрузке моделей: A={resA.get('error')}, B={resB.get('error')}")
+    else:
+        st.session_state["AB_test"] = {"A": resA, "B": resB}
+
+# --- вывод результатов ---
 if st.session_state.get("AB_test"):
     st.markdown("### Результаты A/B теста")
     df_ab = pd.DataFrame([st.session_state["AB_test"]["A"], st.session_state["AB_test"]["B"]])
@@ -426,16 +457,14 @@ if st.session_state.get("AB_test"):
     metrics = ["load_time_sec", "ram_after_load_mb", "time_single_ms", "time_batch_sec", "avg_per_query_ms", "model_size_mb", "embedding_dim", "num_parameters"]
     diff = {}
     for m in metrics:
-        try:
-            a_val = st.session_state["AB_test"]["A"].get(m)
-            b_val = st.session_state["AB_test"]["B"].get(m)
-            diff[m] = {"A": a_val, "B": b_val, "diff (B-A)": (b_val - a_val) if a_val is not None and b_val is not None else None}
-        except Exception:
-            diff[m] = {"A": None, "B": None, "diff (B-A)": None}
+        a_val = st.session_state["AB_test"]["A"].get(m)
+        b_val = st.session_state["AB_test"]["B"].get(m)
+        diff[m] = {"A": a_val, "B": b_val, "diff (B-A)": (b_val - a_val) if a_val is not None and b_val is not None else None}
     st.dataframe(pd.DataFrame(diff).T)
 
-    # Визуализация: bar plot
+    # Визуализация метрик
     try:
+        import plotly.express as px
         plot_df = pd.DataFrame([
             {"model":"A", **st.session_state["AB_test"]["A"]},
             {"model":"B", **st.session_state["AB_test"]["B"]}
