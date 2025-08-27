@@ -386,6 +386,66 @@ if run_btn:
     st.session_state.bench_results.append(res)
     st.success("Тест завершён")
 
+st.markdown("---")
+st.subheader("⚖️ A/B тестирование моделей")
+
+colA, colB = st.columns(2)
+with colA:
+    source_a = st.radio("Источник модели A:", ["HuggingFace", "Local"], key="sourceA")
+    if source_a == "HuggingFace":
+        modelA = st.text_input("Модель A (HF id):", "deepvk/USER-bge-m3", key="modelA")
+    else:
+        modelA = st.text_input("Модель A (путь локальный):", "/content/drive/MyDrive/models/modelA", key="modelA_local")
+
+with colB:
+    source_b = st.radio("Источник модели B:", ["HuggingFace", "Local"], key="sourceB")
+    if source_b == "HuggingFace":
+        modelB = st.text_input("Модель B (HF id):", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", key="modelB")
+    else:
+        modelB = st.text_input("Модель B (путь локальный):", "/content/drive/MyDrive/models/modelB", key="modelB_local")
+
+n_queries_ab = st.number_input("Количество тестовых запросов для A/B:", min_value=1, max_value=500, value=10, key="n_queries_ab")
+text_len_ab = st.selectbox("Длина текста для A/B:", ["short", "medium", "long"], key="text_len_ab")
+
+if st.button("Запустить A/B тест"):
+    with st.spinner("Запускаем A/B тест..."):
+        resA = benchmark_model(modelA, source=("HF" if source_a=="HuggingFace" else "Local"),
+                               n_queries=n_queries_ab, text_length=text_len_ab)
+        resB = benchmark_model(modelB, source=("HF" if source_b=="HuggingFace" else "Local"),
+                               n_queries=n_queries_ab, text_length=text_len_ab)
+
+    # сохраняем в сессию отдельно
+    st.session_state["AB_test"] = {"A": resA, "B": resB}
+
+if st.session_state.get("AB_test"):
+    st.markdown("### Результаты A/B теста")
+    df_ab = pd.DataFrame([st.session_state["AB_test"]["A"], st.session_state["AB_test"]["B"]])
+    st.dataframe(df_ab)
+
+    st.markdown("### Сравнение ключевых метрик")
+    metrics = ["load_time_sec", "ram_after_load_mb", "time_single_ms", "time_batch_sec", "avg_per_query_ms", "model_size_mb", "embedding_dim", "num_parameters"]
+    diff = {}
+    for m in metrics:
+        try:
+            a_val = st.session_state["AB_test"]["A"].get(m)
+            b_val = st.session_state["AB_test"]["B"].get(m)
+            diff[m] = {"A": a_val, "B": b_val, "diff (B-A)": (b_val - a_val) if a_val is not None and b_val is not None else None}
+        except Exception:
+            diff[m] = {"A": None, "B": None, "diff (B-A)": None}
+    st.dataframe(pd.DataFrame(diff).T)
+
+    # Визуализация: bar plot
+    try:
+        plot_df = pd.DataFrame([
+            {"model":"A", **st.session_state["AB_test"]["A"]},
+            {"model":"B", **st.session_state["AB_test"]["B"]}
+        ])
+        fig = px.bar(plot_df, x="model", y=["load_time_sec","time_batch_sec","ram_after_load_mb"],
+                     barmode="group", title="Сравнение метрик моделей A vs B")
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.write("Ошибка визуализации A/B:", e)
+
 # display accumulated results
 if st.session_state.get("bench_results"):
     df = st.session_state.bench_results.copy()
