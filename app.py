@@ -355,9 +355,15 @@ with col2:
     if "bench_results" not in st.session_state:
         st.session_state.bench_results=[]
         
-    if st.button("🗑 Очистить все результаты"):
-        st.session_state.bench_results = []
-        st.success("Все результаты очищены")
+    if st.button("🗑 Полный сброс сессии"):
+        st.session_state.clear()
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        try:
+            load_model_cached.cache_clear()  # сбрасываем lru_cache у загрузчика моделей
+        except Exception:
+            pass
+        st.success("Сессия, результаты и кэши полностью очищены. Обнови страницу для чистого старта.")
 
 if run_btn:
     # НЕ очищаем историю, просто добавляем новый результат
