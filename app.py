@@ -13,6 +13,7 @@ import plotly.express as px
 from sentence_transformers import SentenceTransformer
 import torch
 import gc
+import random
 
 # Словарь с русскими названиями колонок
 COLUMN_NAMES_RU = {
