@@ -9,6 +9,7 @@ import functools
 import math
 import gdown
 import zipfile
+import plotly.express as px
 
 from sentence_transformers import SentenceTransformer
 import torch
