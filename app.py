@@ -161,8 +161,11 @@ def inspect_model_info(model):
     return info
 
 # ---------- Benchmarking (обновлённая версия) ----------
-def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="short", hf_token=None, n_repeats=3):
-    set_seed(42)
+def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="short", hf_token=None, n_repeats=2):
+    import random, numpy as np, torch
+    random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
     
     m = {}
     m["model_id_or_path"] = model_name_or_path
@@ -180,61 +183,12 @@ def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="
         m["error"] = f"Ошибка загрузки модели: {e}"
         return m
 
-    model.eval()  # отключаем случайные элементы
+    model.eval()  # отключаем dropout и случайные элементы
 
     try:
         m["ram_after_load_mb"] = round(get_ram_usage_mb(), 2)
     except Exception:
         m["ram_after_load_mb"] = None
-
-    # размер модели
-    try:
-        size_mb = None
-        if source != "HF" and os.path.isdir(model_name_or_path):
-            size_mb = path_size_bytes(model_name_or_path) / (1024*1024)
-        else:
-            cache_folder = getattr(model, "cache_folder", None)
-            if cache_folder:
-                sub = model_name_or_path.replace("/", "_")
-                candidate = os.path.join(cache_folder, sub)
-                if os.path.isdir(candidate):
-                    size_mb = path_size_bytes(candidate) / (1024*1024)
-                else:
-                    size_mb = path_size_bytes(cache_folder) / (1024*1024)
-        if size_mb is None and source == "HF":
-            files = hf_model_files(model_name_or_path, token=hf_token)
-            if isinstance(files, list):
-                total = sum([f.get("size",0) if isinstance(f, dict) else 0 for f in files])
-                size_mb = total / (1024*1024) if total>0 else None
-        m["model_size_mb"] = round(size_mb,2) if size_mb else None
-    except Exception:
-        m["model_size_mb"] = None
-
-    # инспекция модели
-    try:
-        info = inspect_model_info(model)
-        m.update({
-            "embedding_dim": info.get("dim"),
-            "num_parameters": int(info.get("params")) if info.get("params") else None,
-            "num_layers": info.get("num_layers"),
-            "batch_optimized": info.get("batch_optimized"),
-            "quantization_bitsandbytes_available": info.get("quantization_bitsandbytes_available"),
-            "fp16_cuda_available": info.get("fp16_cuda_available")
-        })
-    except Exception:
-        pass
-
-    # HF метаданные
-    if hf_meta:
-        try:
-            m["hf_author"] = hf_meta.get("author")
-            m["hf_lastModified"] = hf_meta.get("lastModified")
-            tags = hf_meta.get("tags") or []
-            langs = hf_meta.get("languages") or []
-            m["hf_tags"] = ", ".join(tags) if tags else None
-            m["hf_languages"] = ", ".join(langs) if langs else None
-        except Exception:
-            pass
 
     # выбор текста
     if text_length=="short":
@@ -244,12 +198,11 @@ def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="
     else:
         sample_text=" ".join(["Длинный"]*200)
 
-    # прогрев
-    for _ in range(3):
-        try:
-            _ = model.encode(sample_text, convert_to_tensor=True)
-        except Exception:
-            pass
+    # прогрев (1 раз)
+    try:
+        _ = model.encode(sample_text, convert_to_tensor=True)
+    except Exception:
+        pass
 
     # время одиночного запроса
     single_times = []
@@ -293,7 +246,6 @@ def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="
         m["cpu_percent_sample"] = None
 
     return m
-
 # ---------- Optimization tips ----------
 
 def optimization_tips(result):
