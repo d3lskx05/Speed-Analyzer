@@ -8,3 +8,4 @@ gdown
 pandas
 reportlab
 matplotlib
+gc
