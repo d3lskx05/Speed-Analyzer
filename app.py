@@ -332,8 +332,9 @@ with col2:
         st.session_state.bench_results=[]
 
 if run_btn:
-    # Очистка старой аналитики
-    st.session_state.bench_results = []
+    # НЕ очищаем историю, просто добавляем новый результат
+    if "bench_results" not in st.session_state:
+        st.session_state.bench_results = []
 
     with st.spinner("Выполняется бенчмарк..."):
         try:
