@@ -388,7 +388,6 @@ if run_btn:
     res["timestamp"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     st.session_state.bench_results.append(res)
     st.success("Тест завершён")
-
 st.markdown("---")
 st.subheader("⚖️ A/B тестирование моделей")
 
@@ -413,6 +412,7 @@ with colB:
 n_queries_ab = st.number_input("Количество тестовых запросов для A/B:", min_value=1, max_value=500, value=10, key="n_queries_ab")
 text_len_ab = st.selectbox("Длина текста для A/B:", ["short", "medium", "long"], key="text_len_ab")
 
+# ---------- функции ----------
 def download_gdrive_model(file_id, dest_folder):
     os.makedirs(dest_folder, exist_ok=True)
     zip_path = os.path.join(dest_folder, "model.zip")
@@ -422,6 +422,15 @@ def download_gdrive_model(file_id, dest_folder):
         zip_ref.extractall(dest_folder)
     return dest_folder
 
+def normalize_result(res):
+    """Приводим результат benchmark_model к плоскому словарю для DataFrame"""
+    flat_keys = ["load_time_sec","ram_after_load_mb","time_single_ms","time_batch_sec",
+                 "avg_per_query_ms","model_size_mb","embedding_dim","num_parameters"]
+    if "error" in res:
+        return {k: None for k in flat_keys}
+    return {k: res.get(k) for k in flat_keys}
+
+# ---------- запуск ----------
 if st.button("Запустить A/B тест"):
     with st.spinner("Выполняем A/B тест..."):
         # --- модель A ---
@@ -444,33 +453,32 @@ if st.button("Запустить A/B тест"):
         except Exception as e:
             resB = {"error": str(e)}
 
-    # --- проверка ошибок ---
-    if "error" in resA or "error" in resB:
-        st.error(f"Ошибка при загрузке моделей: A={resA.get('error')}, B={resB.get('error')}")
-    else:
-        st.session_state["AB_test"] = {"A": resA, "B": resB}
+    # --- сохраняем в сессию ---
+    st.session_state["AB_test"] = {"A": resA, "B": resB}
 
-# --- вывод результатов ---
+# ---------- вывод ----------
 if st.session_state.get("AB_test"):
     st.markdown("### Результаты A/B теста")
-    df_ab = pd.DataFrame([st.session_state["AB_test"]["A"], st.session_state["AB_test"]["B"]])
+    resA_norm = normalize_result(st.session_state["AB_test"]["A"])
+    resB_norm = normalize_result(st.session_state["AB_test"]["B"])
+    
+    df_ab = pd.DataFrame([resA_norm, resB_norm], index=["A","B"])
     st.dataframe(df_ab)
 
     st.markdown("### Сравнение ключевых метрик")
-    metrics = ["load_time_sec", "ram_after_load_mb", "time_single_ms", "time_batch_sec", "avg_per_query_ms", "model_size_mb", "embedding_dim", "num_parameters"]
+    metrics = list(resA_norm.keys())
     diff = {}
     for m in metrics:
-        a_val = st.session_state["AB_test"]["A"].get(m)
-        b_val = st.session_state["AB_test"]["B"].get(m)
+        a_val = resA_norm.get(m)
+        b_val = resB_norm.get(m)
         diff[m] = {"A": a_val, "B": b_val, "diff (B-A)": (b_val - a_val) if a_val is not None and b_val is not None else None}
     st.dataframe(pd.DataFrame(diff).T)
 
-    # Визуализация метрик
+    # Визуализация
     try:
-        import plotly.express as px
         plot_df = pd.DataFrame([
-            {"model":"A", **st.session_state["AB_test"]["A"]},
-            {"model":"B", **st.session_state["AB_test"]["B"]}
+            {"model":"A", **resA_norm},
+            {"model":"B", **resB_norm}
         ])
         fig = px.bar(plot_df, x="model", y=["load_time_sec","time_batch_sec","ram_after_load_mb"],
                      barmode="group", title="Сравнение метрик моделей A vs B")
