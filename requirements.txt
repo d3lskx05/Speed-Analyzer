@@ -4,3 +4,4 @@ plotly
 requests
 torch
 transformers
+gdown
