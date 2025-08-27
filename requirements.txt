@@ -1,3 +1,4 @@
+streamlit
 sentence-transformers
 psutil
 plotly
@@ -8,4 +9,3 @@ gdown
 pandas
 reportlab
 matplotlib
-gc
