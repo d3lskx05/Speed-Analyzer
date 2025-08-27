@@ -7,6 +7,8 @@ import requests
 import json
 import functools
 import math
+import gdown
+import zipfile
 
 from sentence_transformers import SentenceTransformer
 import torch
