@@ -353,6 +353,10 @@ with col2:
     #st.markdown("**Сохранённые результаты**")
     if "bench_results" not in st.session_state:
         st.session_state.bench_results=[]
+        
+    if st.button("🗑 Очистить все результаты"):
+        st.session_state.bench_results = []
+        st.success("Все результаты очищены")
 
 if run_btn:
     # НЕ очищаем историю, просто добавляем новый результат
