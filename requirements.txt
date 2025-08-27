@@ -1,0 +1,6 @@
+sentence-transformers
+psutil
+plotly
+requests
+torch
+transformers
