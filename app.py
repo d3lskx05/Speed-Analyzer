@@ -350,7 +350,7 @@ with col1:
     run_btn=st.button("Запустить тест")
 
 with col2:
-    st.markdown("**Сохранённые результаты**")
+    #st.markdown("**Сохранённые результаты**")
     if "bench_results" not in st.session_state:
         st.session_state.bench_results=[]
 
