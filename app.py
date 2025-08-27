@@ -13,6 +13,29 @@ import plotly.express as px
 from sentence_transformers import SentenceTransformer
 import torch
 
+# Словарь с русскими названиями колонок
+COLUMN_NAMES_RU = {
+    "model_id_or_path": "Модель",
+    "source": "Источник",
+    "load_time_sec": "Время загрузки (сек)",
+    "ram_after_load_mb": "RAM после загрузки (МБ)",
+    "model_size_mb": "Размер модели (МБ)",
+    "embedding_dim": "Размер эмбеддинга",
+    "num_parameters": "Параметров",
+    "num_layers": "Слоёв",
+    "batch_optimized": "Оптимизация батчей",
+    "quantization_bitsandbytes_available": "Доступно квантование",
+    "fp16_cuda_available": "FP16 CUDA",
+    "hf_author": "Автор HF",
+    "hf_lastModified": "Последнее изменение HF",
+    "hf_tags": "Теги HF",
+    "hf_languages": "Языки HF",
+    "time_single_ms": "Время 1 запроса (мс)",
+    "time_batch_sec": "Время батча (сек)",
+    "avg_per_query_ms": "Среднее время (мс)",
+    "cpu_percent_sample": "CPU (%)",
+    "timestamp": "Время теста"
+}
 # ---------- Helper utilities ----------
 
 def sizeof_fmt(num, suffix="B"):
@@ -363,7 +386,8 @@ if run_btn:
 if "bench_results" in st.session_state and st.session_state.bench_results:
     st.subheader("📋 Результаты Single тестов")
     df=pd.DataFrame(st.session_state.bench_results)
-    st.dataframe(df)
+    df_display = df.rename(columns=COLUMN_NAMES_RU)
+    st.dataframe(df_display)
 
     # Выбор тестов для сравнения
     selected_rows = st.multiselect(
@@ -386,18 +410,6 @@ if "bench_results" in st.session_state and st.session_state.bench_results:
     st.subheader("🛠 Рекомендации")
     for r in st.session_state.bench_results:
         st.markdown(f"### {r.get('model_id_or_path')} — {r.get('timestamp')}")
-        st.write({
-            "Load time (s)": r.get("load_time_sec"),
-            "Model size (MB)": r.get("model_size_mb"),
-            "RAM after load (MB)": r.get("ram_after_load_mb"),
-            "Embedding dim": r.get("embedding_dim"),
-            "Num params": r.get("num_parameters"),
-            "Num layers": r.get("num_layers"),
-            "Time single (ms)": r.get("time_single_ms"),
-            "Time batch (s)": r.get("time_batch_sec"),
-            "Quantization (bitsandbytes)": r.get("quantization_bitsandbytes_available"),
-            "FP16 CUDA": r.get("fp16_cuda_available"),
-            "HF tags / languages": r.get("hf_tags", r.get("hf_languages"))
-        })
+        st.write({COLUMN_NAMES_RU.get(k, k): v for k, v in r.items()})
         st.markdown("**Рекомендации:**")
         st.code(optimization_tips(r))
