@@ -472,11 +472,13 @@ if st.session_state.get("AB_test"):
         resA_norm = normalize_result(resA)
         resB_norm = normalize_result(resB)
 
+        # DataFrame
         df_ab = pd.DataFrame([resA_norm, resB_norm])
         df_ab.index = ["A", "B"]
         st.markdown("### Результаты A/B теста")
         st.dataframe(df_ab)
 
+        # Сравнение метрик
         st.markdown("### Сравнение ключевых метрик")
         metrics = list(resA_norm.keys())
         diff = {}
@@ -486,7 +488,7 @@ if st.session_state.get("AB_test"):
             diff[m] = {"A": a_val, "B": b_val, "diff (B-A)": (b_val - a_val) if a_val is not None and b_val is not None else None}
         st.dataframe(pd.DataFrame(diff).T)
 
-        # визуализация
+        # Визуализация
         try:
             plot_df = pd.DataFrame([
                 {"model":"A", **resA_norm},
