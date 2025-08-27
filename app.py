@@ -435,6 +435,14 @@ def normalize_result(res):
         return {k: None for k in keys}
     return {k: res.get(k, None) for k in keys}
 
+def cleanup_tmp():
+    for folder in ["/tmp/modelA", "/tmp/modelB"]:
+        if os.path.exists(folder):
+            try:
+                shutil.rmtree(folder)
+            except Exception as e:
+                st.warning(f"Не удалось удалить временную папку {folder}: {e}")
+
 # ---------- запуск A/B ----------
 if st.button("Запустить A/B тест"):
     with st.spinner("Выполняем A/B тест..."):
@@ -458,8 +466,11 @@ if st.button("Запустить A/B тест"):
         except Exception as e:
             resB = {"error": str(e)}
 
-    # --- сохраняем результаты в сессию ---
-    st.session_state["AB_test"] = {"A": resA, "B": resB}
+        # --- сохраняем результаты в сессию ---
+        st.session_state["AB_test"] = {"A": resA, "B": resB}
+
+        # --- очистка временных папок ---
+        cleanup_tmp()
 
 # ---------- вывод результатов ----------
 if st.session_state.get("AB_test"):
@@ -489,7 +500,7 @@ if st.session_state.get("AB_test"):
             diff[m] = {"A": a_val, "B": b_val, "diff (B-A)": (b_val - a_val) if a_val is not None and b_val is not None else None}
         st.dataframe(pd.DataFrame(diff).T)
 
-        # Визуализация
+        # визуализация
         try:
             plot_df = pd.DataFrame([
                 {"model":"A", **resA_norm},
