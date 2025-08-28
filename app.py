@@ -161,7 +161,7 @@ def inspect_model_info(model):
     return info
 
 # ---------- Benchmarking (обновлённая версия) ----------
-def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="short", hf_token=None, n_repeats=2):
+def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="short", hf_token=None, n_repeats=2, warmup_runs=2):
     import random, numpy as np, torch
     # фиксируем seed для повторяемости
     random.seed(42)
@@ -252,9 +252,10 @@ def benchmark_model(model_name_or_path, source="HF", n_queries=10, text_length="
     else:
         sample_text = " ".join(["Длинный"] * 200)
 
-    # Прогрев (1 раз)
+    # Прогревочные запуски
     try:
-        _ = model.encode(sample_text, convert_to_tensor=True)
+        for _ in range(warmup_runs):
+            _ = model.encode(sample_text, convert_to_tensor=True)
     except Exception:
         pass
 
